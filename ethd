@@ -1580,7 +1580,11 @@ version() {
     grep "^This is" README.md
     echo ""
     var="COMPOSE_FILE"
+    echo "Your COMPOSE_FILE is:" "${var}"
     value=$(sed -n -e "s/^${var}=\(.*\)/\1/p" ".env" || true)
+    
+    echo "Your COMPOSE_FILE is:" "${value}"
+
     # Client versions
     case "${value}" in
         *blox-ssv2.yml* )
