@@ -19,7 +19,7 @@ determine_distro() {
     # If Linux, try to determine specific distribution
     if [ "$__uname" == "linux" ]; then
         # If available, use LSB to identify distribution
-        if [ -n "$(which lsb_release 2>/dev/null)" ]; then
+        if [ -n "$(command -v lsb_release 2>/dev/null)" ]; then
             __distro=$(lsb_release -i | cut -d: -f2 | sed s/'^\t'//)
         # Otherwise, use release info file
         else
@@ -130,7 +130,7 @@ handle_root() {
 }
 
 check_for_snap() {
-    if [[ "$__distro" = "ubuntu" && -n "$(which snap)" ]] && snap list 2>/dev/null | grep -qw 'docker'; then
+    if [[ "$__distro" = "ubuntu" && -n "$(command -v snap)" ]] && snap list 2>/dev/null | grep -qw 'docker'; then
         echo
         echo "WARNING! Snap docker package detected. This WILL result in issues."
         echo "Removing the package will delete volumes and require a resync,"
@@ -165,8 +165,8 @@ install() {
         if [ "${__major_version}" -lt 18 ]; then
             echo "This script cannot install docker on Ubuntu ${__major_version}. Consider upgrading to 22.04 or 20.04"
         fi
-        if [ -z "$(which docker)" ]; then
-            ${__auto_sudo} apt-get update && ${__auto_sudo} apt-get install -y ca-certificates curl gnupg lsb-release whiptail bc
+        if [ -z "$(command -v docker)" ]; then
+            ${__auto_sudo} apt-get update && ${__auto_sudo} apt-get install -y ca-certificates curl gnupg lsb-release whiptail bc chrony
             ${__auto_sudo} mkdir -p /etc/apt/keyrings
             ${__auto_sudo} curl -fsSL https://download.docker.com/linux/ubuntu/gpg | ${__auto_sudo} gpg --dearmor -o /etc/apt/keyrings/docker.gpg
             ${__auto_sudo} echo \
@@ -187,9 +187,9 @@ install() {
             echo "Your user is already part of the docker group"
         fi
     elif [[ "$__distro" =~ "debian" ]]; then
-        if [ -z "$(which docker)" ]; then
+        if [ -z "$(command -v docker)" ]; then
             ${__auto_sudo} apt-get update
-            ${__auto_sudo} apt-get -y install ca-certificates curl gnupg lsb-release whiptail bc
+            ${__auto_sudo} apt-get -y install ca-certificates curl gnupg lsb-release whiptail bc chrony
             ${__auto_sudo} mkdir -p /etc/apt/keyrings
             ${__auto_sudo} curl -fsSL https://download.docker.com/linux/debian/gpg | ${__auto_sudo} gpg --dearmor -o /etc/apt/keyrings/docker.gpg
             ${__auto_sudo} echo \
@@ -263,13 +263,12 @@ update() {
         exec "${BASH_SOURCE[0]}" update $__targetcli
     fi
 
-    docompose build --pull
     docompose --profile tools build --pull
     exec 3>&1
     exec 4>&2
     exec 1> /dev/null
     exec 2> /dev/null
-    docompose pull || true
+    docompose --profile tools pull --ignore-pull-failures || true
     exec 1>&3
     exec 2>&4
 
@@ -389,11 +388,11 @@ envmigrate() {
             DDNS_PROXY RAPID_SYNC_URL CL_NODE BEACON_STATS_API BEACON_STATS_MACHINE EL_P2P_PORT CL_P2P_PORT \
             PRYSM_PORT DOPPELGANGER PRYSM_UDP_PORT GRAFANA_PORT KEY_API_PORT TRAEFIK_WEB_PORT TRAEFIK_WEB_HTTP_PORT \
             CL_REST_PORT EL_RPC_PORT EL_WS_PORT EE_PORT ERIGON_TORRENT_PORT LOG_LEVEL JWT_SECRET EL_EXTRAS CL_EXTRAS \
-            VC_EXTRAS SSV_P2P_PORT SSV_P2P_PORT_UDP )
-    TARGET_VARS=( NIM_SRC_BUILD_TARGET NIM_DOCKER_TAG NIM_DOCKERFILE TEKU_SRC_BUILD_TARGET TEKU_DOCKER_TAG \
+            VC_EXTRAS SSV_P2P_PORT SSV_P2P_PORT_UDP ERIGON_P2P_PORT_2 ERIGON_P2P_PORT_3 )
+    TARGET_VARS=( NIM_SRC_BUILD_TARGET NIM_DOCKER_TAG NIM_DOCKER_VC_TAG NIM_DOCKERFILE TEKU_SRC_BUILD_TARGET TEKU_DOCKER_TAG \
                 TEKU_DOCKERFILE LH_SRC_BUILD_TARGET LH_DOCKER_TAG LH_DOCKERFILE PRYSM_SRC_BUILD_TARGET \
-                PRYSM_DOCKER_TAG PRYSM_DOCKERFILE ERIGON_SRC_BUILD_TARGET ERIGON_DOCKER_TAG ERIGON_DOCKERFILE \
-                AKULA_SRC_BUILD_TARGET AKULA_DOCKER_TAG AKULA_DOCKERFILE MEV_DOCKERFILE MEV_DOCKER_TAG \
+                PRYSM_DOCKER_TAG PRYSM_DOCKER_VC_TAG PRYSM_DOCKERFILE ERIGON_SRC_BUILD_TARGET ERIGON_DOCKER_TAG \
+                ERIGON_DOCKERFILE MEV_DOCKERFILE MEV_DOCKER_TAG NIMEL_SRC_BUILD_TARGET NIMEL_DOCKER_TAG NIMEL_DOCKERFILE \
                 LS_SRC_BUILD_TARGET LS_DOCKER_TAG LS_DOCKERFILE GETH_SRC_BUILD_TARGET GETH_DOCKER_TAG \
                 GETH_DOCKERFILE NM_SRC_BUILD_TARGET NM_DOCKER_TAG NM_DOCKERFILE BESU_SRC_BUILD_TARGET \
                 BESU_DOCKER_TAG BESU_DOCKERFILE SSV2_NODE_TAG DEPCLI_SRC_BUILD_TARGET DEPCLI_DOCKER_TAG \
@@ -498,11 +497,11 @@ envmigrate() {
 # I do mean to match literally
 # shellcheck disable=SC2076
     if [[ "${value}" =~ "prysm.yml" || "${value}" =~ "lighthouse.yml" || "${value}" =~ "teku.yml" || "${value}" =~ "nimbus.yml" || "${value}" =~ "lodestar.yml" || "${value}" =~ "-cl-only.yml" ]]; then
-        if [[ ! "${value}" =~ "geth.yml" && ! "${value}" =~ "besu.yml" && ! "${value}" =~ "erigon.yml" && ! "${value}" =~ "nethermind.yml" && ! "${value}" =~ "akula.yml" ]]; then
+        if [[ ! "${value}" =~ "geth.yml" && ! "${value}" =~ "besu.yml" && ! "${value}" =~ "erigon.yml" && ! "${value}" =~ "nethermind.yml"  && ! "${value}" =~ "nimbus-el.yml" ]]; then
             whiptail --msgbox "An Execution Layer client is required alongside your Consensus Layer client come Ethereum Merge. Refer to eth-docker docs (https://eth-docker.net/docs/About/MergePrep) for more information.\n\nPlease start running your own EL soonest, as Infura will no longer be usable as an EL after The Merge.\n\nIf you run a distributed setup, you can shut off this nag screen by setting DISTRIBUTED=true in .env" 16 75
         fi
     # Case 2 ... EL, do we have a CL?
-    elif [[ "${value}" =~ "geth.yml" || "${value}" =~ "besu.yml" || "${value}" =~ "erigon.yml" || "${value}" =~ "nethermind.yml" || "${value}" =~ "akula.yml" ]]; then
+    elif [[ "${value}" =~ "geth.yml" || "${value}" =~ "besu.yml" || "${value}" =~ "erigon.yml" || "${value}" =~ "nethermind.yml" || "${value}" =~ "nimbus-el.yml" ]]; then
         if [[ ! "${value}" =~ "prysm.yml"  && ! "${value}" =~ "lighthouse.yml"  && ! "${value}" =~ "teku.yml"  && ! "${value}" =~ "nimbus.yml"  && ! "${value}" =~ "lodestar.yml"  && ! "${value}" =~ "-cl-only.yml" ]]; then
             whiptail --msgbox "A Consensus Layer client is required alongside your Execution Layer client come Ethereum Merge. Refer to eth-docker docs (https://eth-docker.net/docs/About/MergePrep) for more information.\n\nPlease start running your own CL soonest, as an EL alone will no longer be usable after The Merge.\n\nIf you run a distributed setup, you can shut off this nag screen by setting DISTRIBUTED=true in .env" 16 75
         fi
@@ -633,6 +632,20 @@ query_blox_switch() {
     sed -i '/NetworkID/d' blox-ssv-config.yaml
 }
 
+attach-geth() {
+    if [ ! -f "./${ENV_FILE}" ]; then
+        echo "${ENV_FILE} configuration file not found, aborting."
+        exit 1
+    fi
+
+    if ! grep -q '^COMPOSE_FILE=.*geth\.yml' "${ENV_FILE}" 2>/dev/null ; then
+        echo "You do not appear to be using Geth, aborting."
+        exit 1
+    fi
+
+    docompose exec -it execution bash -c "geth attach /var/lib/goethereum/geth.ipc"
+}
+
 prune-geth() {
     __non_interactive=0
     while :
@@ -662,9 +675,11 @@ prune-geth() {
         exit 1
     fi
 
-    if [ "$(df -P /var/lib/docker | awk '/[0-9]%/{print $(NF-2)}')" -lt 41943040 ]; then
+    __docker_dir=$(docker system info --format '{{.DockerRootDir}}')
+
+    if [ "$(df -P ${__docker_dir} | awk '/[0-9]%/{print $(NF-2)}')" -lt 41943040 ]; then
         echo "You do not have enough free disk space. Make sure this reads at least 40G free (Avail):"
-        df -h /var/lib/docker
+        df -h "${__docker_dir}"
         echo ""
         echo "Aborting."
         exit 1
@@ -767,9 +782,12 @@ prune-nethermind() {
         exit 1
     fi
 
-    if [ "$(df -P /var/lib/docker | awk '/[0-9]%/{print $(NF-2)}')" -lt 131072000 ]; then
-        echo "You do not have enough free disk space. Make sure this reads at least 125G free (Avail):"
-        df -h /var/lib/docker
+
+    __docker_dir=$(docker system info --format '{{.DockerRootDir}}')
+
+    if [ "$(df -P ${__docker_dir} | awk '/[0-9]%/{print $(NF-2)}')" -lt 262144000 ]; then
+        echo "You do not have enough free disk space. Make sure this reads at least 250G free (Avail):"
+        df -h "${__docker_dir}"
         echo ""
         echo "Aborting."
         exit 1
@@ -803,7 +821,7 @@ prune-nethermind() {
 
     if [ $__non_interactive = 0 ]; then
       while true; do
-          read -rp "WARNING - this will restart Nethermind and prune its database in the background. Do you wish to continue? (No/Yes) " yn
+          read -rp "WARNING - this will prune Nethermind's database in the background. Do you wish to continue? (No/Yes) " yn
           case $yn in
               [Yy]es ) break;;
               * ) echo "Aborting, no changes made"; exit 1;;
@@ -814,32 +832,8 @@ prune-nethermind() {
     echo ""
     echo "Starting Nethermind prune"
     echo ""
-    docompose run --rm set-prune-marker "touch /var/lib/nethermind/prune-marker"
-    docompose stop execution && docompose rm -f execution
-    start
 
-    echo "Waiting for Nethermind to be up"
-    __nethermind_active=0
-    for ((t=1; t<=3; t++)); do
-        docompose exec -T execution wget -T 1 -qO- "http://localhost:$rpc_port" --header 'Content-Type: application/json' --post-data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}'
-        exitstatus=$?
-        if [[ ${exitstatus} -ne 0 ]]; then
-            echo "Nethermind is not active yet."
-        else
-            echo
-            echo "Nethermind active, sending prune command."
-            __nethermind_active=1
-            break
-        fi
-    done
-
-    if [[ ${__nethermind_active} -eq 0 ]]; then
-        echo "Nethermind did not become active in time. Please try running the following command manually, then check Nethermind logs."
-        echo 'docker-compose run --rm set-prune-marker "curl -s --data {\\\"method\\\":\\\"admin_prune\\\",\\\"params\\\":[],\\\"id\\\":1,\\\"jsonrpc\\\":\\\"2.0\\\"} -H Content-Type:\ application/json http://execution:8545"'
-        exit 1
-    fi
-
-    prune_result=$(docompose run --rm set-prune-marker "curl -s --data {\\\"method\\\":\\\"admin_prune\\\",\\\"params\\\":[],\\\"id\\\":1,\\\"jsonrpc\\\":\\\"2.0\\\"} -H Content-Type:\ application/json http://execution:8545")
+    prune_result=$(docompose exec -T execution wget -qO- "http://localhost:1337" --header 'Content-Type: application/json' --post-data '{"jsonrpc":"2.0","method":"admin_prune","params":[],"id":1}')
     exitstatus=$?
     if [ $exitstatus -ne 0 ]; then
         echo "Unable to start prune, error code ${exitstatus}. This is likely a bug."
@@ -853,7 +847,7 @@ prune-nethermind() {
         exit 1
     fi
     echo ""
-    echo "Prune is running, you can observe it with './ethd logs -f execution'"
+    echo "Prune is running, you can observe it with './ethd logs -f --tail 50 execution'"
     echo ""
     echo "Please do not restart the node or restart Nethermind until prune is done."
     echo ""
@@ -1004,7 +998,9 @@ terminate() {
     done
 
     down
-    dodocker volume rm "$(dodocker volume ls -q -f "name=$(basename "$(realpath .)")")"
+# In this case I want the word splitting, so rm can remove all volumes
+# shellcheck disable=SC2046
+    dodocker volume rm $(dodocker volume ls -q -f "name=$(basename "$(realpath .)")")
     echo ""
     echo "All containers stopped and all volumes deleted"
     echo ""
@@ -1131,7 +1127,8 @@ query_consensus_client() {
       "Which consensus client do you want to run?" 10 65 3 \
       "lighthouse.yml" "Lighthouse (Rust) - consensus and validator client" \
       "teku.yml" "Teku (Java) - consensus and validator client" \
-      "lodestar.yml" "Lodestar (Javascript) - consensus and validator client" 3>&1 1>&2 2>&3)
+      "lodestar.yml" "Lodestar (Javascript) - consensus and validator client" \
+      "nimbus.yml" "Nimbus (Nim) - consensus and validator client" 3>&1 1>&2 2>&3)
     elif uname -a | grep -q aarch64; then
       CONSENSUS_CLIENT=$(whiptail --notags --title "Select consensus client" --menu \
       "Which consensus client do you want to run?" 10 65 3 \
@@ -1653,10 +1650,6 @@ version() {
             docompose exec execution erigon --version
             echo
             ;;&
-        *akula.yml* )
-            echo "eth-docker does not know how to display Akula's version"
-            echo
-            ;;&
         *mev-boost.yml* )
             docompose exec mev-boost /app/mev-boost -version
             echo
@@ -1709,6 +1702,8 @@ printhelp() {
     echo "     stops the Geth execution client and prunes its DB. This takes about 4-5 hours"
     echo "  prune-nethermind"
     echo "     restarts the Nethermind execution client and prunes its DB."
+    echo "  attach-geth"
+    echo "     launches an interactive geth attach repl"
     echo ""
     echo ""
     echo "The logs subcommand can be appended by flags and specify the container(s). example: "

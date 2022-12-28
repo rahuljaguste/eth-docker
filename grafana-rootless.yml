@@ -1,3 +1,4 @@
+# Grafana for use with rootless docker. Omits node-exporter, cadvisor, promtail and Loki
 version: "3.9"
 x-logging: &logging
   logging:
@@ -22,11 +23,9 @@ services:
     command: ["/bin/prometheus", "--storage.tsdb.path=/prometheus", "--web.console.libraries=/usr/share/prometheus/console_libraries", "--web.console.templates=/usr/share/prometheus/consoles"]
     <<: *logging
     depends_on:
-      - node-exporter
       - blackbox-exporter
       - json-exporter
       - cryptowat-exporter
-      - cadvisor
       - ethereum-metrics-exporter
 
   ethereum-metrics-exporter:
@@ -39,25 +38,6 @@ services:
     entrypoint:
       - docker-entrypoint.sh
       - /ethereum-metrics-exporter
-    <<: *logging
-
-  node-exporter:
-    image: quay.io/prometheus/node-exporter:latest
-    command:
-      - '--path.rootfs=/host'
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
-#      - '--collector.textfile.directory=/etc/node-exporter/'
-      - '--collector.filesystem.ignored-mount-points=${NODE_EXPORTER_IGNORE_MOUNT_REGEX}'
-      - '--no-collector.ipvs'
-    pid: host
-    restart: unless-stopped
-    volumes:
-      - '/:/host:ro,rslave'
-      - /etc/hostname:/etc/nodename:ro
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /etc/localtime:/etc/localtime:ro
     <<: *logging
 
   blackbox-exporter:
@@ -93,44 +73,6 @@ services:
       - TZ=Europe/Zurich
     <<: *logging
 
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /:/rootfs:ro
-      - /var/run:/var/run
-      - /sys:/sys:ro
-      - /var/lib/docker:/var/lib/docker:ro
-    command:
-      - --docker_only
-      - --housekeeping_interval=30s
-    <<: *logging
-
-  promtail:
-    image: grafana/promtail:latest
-    user: root
-    volumes:
-      - /etc/machine-id:/etc/machine-id:ro
-      - ./promtail:/etc/promtail
-      - promtail-data:/tmp
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    command:
-      - '--config.file=/etc/promtail/promtail.yml'
-    restart: "unless-stopped"
-    depends_on:
-      - loki
-    <<: *logging
-
-  loki:
-    image: grafana/loki:latest
-    volumes:
-      - loki-data:/tmp
-      - ./loki:/etc/loki
-    command:
-      - '--config.file=/etc/loki/loki.yml'
-    restart: "unless-stopped"
-    <<: *logging
-
   grafana:
     restart: "unless-stopped"
     build:
@@ -147,8 +89,6 @@ services:
       - /etc/localtime:/etc/localtime:ro
     depends_on:
       - prometheus
-      - loki
-      - promtail
     entrypoint: ["provision-dashboards.sh"]
     command: /run.sh
     <<: *logging
@@ -163,5 +103,3 @@ volumes:
   grafana-data:
   grafana-config:
   prom-data:
-  loki-data:
-  promtail-data:
